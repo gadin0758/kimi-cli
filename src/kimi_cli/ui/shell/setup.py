@@ -69,30 +69,42 @@ async def setup(app: Shell, args: list[str]):
         # error message already printed
         return
 
-    config = load_config()
-    config.providers[result.platform.id] = LLMProvider(
-        type="kimi",
-        base_url=result.platform.base_url,
-        api_key=result.api_key,
-    )
+        config = load_config()
+
+    # Save provider: distinguish local vs cloud
+    if result.platform.id == "local-ollama":
+        config.providers["local-ollama"] = LLMProvider(
+            type="openai_legacy",
+            base_url=result.platform.base_url,
+            api_key=result.api_key,
+        )
+    else:
+        config.providers[result.platform.id] = LLMProvider(
+            type="kimi",
+            base_url=result.platform.base_url,
+            api_key=result.api_key,
+        )
+
+    # Save model
     config.models[result.model_id] = LLMModel(
-        provider=result.platform.id,
+        provider="local-ollama" if result.platform.id == "local-ollama" else result.platform.id,
         model=result.model_id,
         max_context_size=result.max_context_size,
     )
     config.default_model = result.model_id
 
-    if result.platform.search_url:
-        config.services.moonshot_search = MoonshotSearchConfig(
-            base_url=result.platform.search_url,
-            api_key=result.api_key,
-        )
-
-    if result.platform.fetch_url:
-        config.services.moonshot_fetch = MoonshotFetchConfig(
-            base_url=result.platform.fetch_url,
-            api_key=result.api_key,
-        )
+    # Save search/fetch services only for cloud platforms
+    if result.platform.id != "local-ollama":
+        if result.platform.search_url:
+            config.services.moonshot_search = MoonshotSearchConfig(
+                base_url=result.platform.search_url,
+                api_key=result.api_key,
+            )
+        if result.platform.fetch_url:
+            config.services.moonshot_fetch = MoonshotFetchConfig(
+                base_url=result.platform.fetch_url,
+                api_key=result.api_key,
+            )
 
     save_config(config)
     console.print("[green]✓[/green] Kimi CLI has been setup! Reloading...")
