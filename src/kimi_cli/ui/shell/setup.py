@@ -53,6 +53,11 @@ _PLATFORMS = [
         base_url="https://api.moonshot.ai/v1",
         allowed_prefixes=["kimi-k2-"],
     ),
+    _Platform(
+        id="local-ollama",
+        name="Local Ollama (localhost:11434)",
+        base_url="http://localhost:11434/v1",
+    ),
 ]
 
 
