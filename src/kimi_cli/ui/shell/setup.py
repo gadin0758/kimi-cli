@@ -123,6 +123,66 @@ async def _setup() -> _SetupResult | None:
 
     platform = next(platform for platform in _PLATFORMS if platform.name == platform_name)
 
+        # ===== Handle Local Ollama with auto-detection + fallback =====
+    if platform.id == "local-ollama":
+        ollama_models: list[str] = []
+        base_url = "http://localhost:11434"
+
+        # Try to fetch models from Ollama
+        try:
+            async with new_client_session() as session:
+                async with session.get(f"{base_url}/api/tags", timeout=3) as resp:
+                    if resp.status == 200:
+                        data = await resp.json()
+                        ollama_models = [m["name"] for m in data.get("models", [])]
+                        console.print(f"[green]✓[/green] Found {len(ollama_models)} model(s) in Ollama.")
+                    else:
+                        console.print(f"[yellow]⚠[/yellow] Ollama returned status {resp.status}")
+        except asyncio.TimeoutError:
+            console.print("[yellow]⚠[/yellow] Timeout connecting to Ollama (is it running?)")
+        except Exception as e:
+            console.print(f"[yellow]⚠[/yellow] Failed to fetch models from Ollama: {type(e).__name__}")
+
+        # Fallback to common models if none detected
+        if not ollama_models:
+            fallback_models = ["qwen:7b", "llama3", "phi3", "mistral", "gemma2:2b"]
+            console.print("[dim]Using common model suggestions (pull with `ollama pull <model>`)[/dim]")
+            ollama_models = fallback_models
+
+        ollama_models.append("custom...")
+
+        model_choice = await _prompt_choice(
+            header="Select a local model",
+            choices=ollama_models,
+        )
+        if not model_choice:
+            return None
+
+        if model_choice == "custom...":
+            model_id = await _prompt_text("Enter custom model name (e.g., qwen:14b)")
+            if not model_id:
+                return None
+            max_ctx = 32768
+        else:
+            model_id = model_choice
+            ctx_map = {
+                "qwen:7b": 32768, "qwen:14b": 32768, "qwen:32b": 32768,
+                "llama3": 8192, "llama3:70b": 8192,
+                "phi3": 4096,
+                "mistral": 8192,
+                "gemma2:2b": 4096, "gemma2:9b": 4096,
+            }
+            max_ctx = ctx_map.get(model_id, 8192)
+
+        return _SetupResult(
+            platform=platform,
+            api_key=SecretStr("sk-local"),
+            model_id=model_id,
+            max_context_size=max_ctx,
+        )
+
+    # ===== 原有云平台逻辑（保持不变）=====
+
     # enter the API key
     api_key = await _prompt_text("Enter your API key", is_password=True)
     if not api_key:
